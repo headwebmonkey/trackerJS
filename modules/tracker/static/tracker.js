@@ -14,12 +14,13 @@ var trackJSPrivate = {
     clientID = localStorage.getItem("UUID");
     if(clientID === null){
       clientID = this._guid();
-      // localStorage.setItem("UUID", clientID);
+      localStorage.setItem("UUID", clientID);
       firstTimeVisitor = true;
     }
     if(firstTimeVisitor){
       this._firstTimeVisitor();
     }
+    this._trackVisit();
   },
   _guid: function() {
     function s4() {
@@ -114,9 +115,23 @@ var trackJSPrivate = {
     data.push(/Mobile|mini|Fennec|Android|iP(ad|od|hone)/.test(navigator.appVersion));
     this._makeServiceCall("newClient", data);
   },
+  _trackVisit: function(){
+    var data = [];
+    data.push(window.location.protocol.replace(":", ""));
+    data.push(window.location.host);
+    data.push(window.location.pathname);
+    data.push(document.referrer);
+    this._makeServiceCall("visit", data);
+  },
+  _trackAction: function(name, data){
+    if(data === undefined) data = {};
+    var d = [];
+    d.push(name);
+    d.push(JSON.stringify(data));
+    trackJSPrivate._makeServiceCall("action", d);
+  },
   _makeServiceCall: function(callPath, data){
     callPath = 'http://'+trackerServer+'/'+callPath+"?d="+data.join("~")+"&c="+clientID+"&v="+visitID;
-    console.log("SERVICE CALL: "+callPath);
     script = document.createElement('script');
     script.type = 'text/javascript';
     script.src = callPath;
@@ -124,8 +139,10 @@ var trackJSPrivate = {
   }
 };
 
-var trackJS = {
-
+var TrackJS = {
+  action: trackJSPrivate._trackAction
 };
+
+var trackJSCallback = function(){}
 
 trackJSPrivate._init();

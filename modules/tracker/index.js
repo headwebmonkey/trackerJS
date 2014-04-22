@@ -4,18 +4,23 @@ var journey = require("journey"),
     fs = require('fs'),
     path = require('path'),
     minify= require("minify"),
-    serverURL = "";
+    serverURL = "",
+    onlineUsers = {};
 
 function _init(serverAddress, port){
   serverURL = serverAddress+":"+port;
-
-  fs.readdirSync(minify.MinFolder).forEach(function(fileName) {
-    fs.unlinkSync(minify.MinFolder+fileName);
+  fs.exists(minify.MinFolder, function(file){
+    if (file === false) return;
+    fs.readdirSync(minify.MinFolder).forEach(function(fileName) {
+      fs.unlinkSync(minify.MinFolder+fileName);
+    });
   });
 
   router.map(function () {
     this.root.bind(routes.root);
     this.get("newClient").bind(routes.newClient);
+    this.get("visit").bind(routes.visit);
+    this.get("action").bind(routes.action);
   });
 
   require('http').createServer(function (request, response) {
@@ -24,7 +29,7 @@ function _init(serverAddress, port){
     request.addListener('data', function (chunk) { body += chunk });
     request.addListener('end', function () {
       console.log(request.url);
-      if(request.url.indexOf("/static/") === -1){
+      if(request.url.indexOf("/static/") === -1 || request.url.indexOf("~/static/test.htm") !== -1){
         router.handle(request, body, function (result) {
           _postHandler(request, result);
           response.writeHead(result.status, result.headers);
@@ -43,7 +48,7 @@ function _errorHandler(res, code, message){
 
 function _preHandler(req, res){
   req.startTime = process.hrtime();
-  if(req.url.indexOf("/static/") !== -1){
+  if(req.url.indexOf("/static/") !== -1 && req.url.indexOf("~/static/test.htm") === -1){
     var contentType = "text/plain";
     var filePath = __dirname+req.url;
     var shouldMinify = false;
@@ -140,7 +145,9 @@ var routes = {
   newClient: function(req, res, params){
     res.send({});
     var browserInfo = params.d.split("~");
-    browserInfo = {
+    var clientInfo = {
+      clientId: params.c,
+      firstVisit: utils.epoch(),
       browser: browserInfo[0],
       browserVersion: browserInfo[1],
       cookieSupport: browserInfo[2],
@@ -150,10 +157,41 @@ var routes = {
       operatingSystemVersion: browserInfo[6],
       mobileDevice: browserInfo[7]
     };
-    console.log(browserInfo);
+    db.collection("clients").insert(clientInfo, function(){});
+  },
+  visit: function(req, res, params){
+    res.send({});
+    var visitInfo = params.d.split("~");
+    var clientInfo = {
+      clientId: params.c,
+      visitId: params.v,
+      time: utils.epoch(),
+      protocol: visitInfo[0],
+      host: visitInfo[1],
+      path: visitInfo[2],
+      referrer: visitInfo[3]
+    };
+    db.collection("visits").insert(clientInfo, function(){});
+    if(onlineUsers[params.c] == undefined){
+      onlineUsers[params.c] = {
+        lastSeen: utils.epoch()
+      }
+    }
+    onlineUsers[params.c].lastSeen = utils.epoch();
+  },
+  action: function(req, res, params){
+    res.send({});
+    var actionInfo = params.d.split("~");
+    var info = JSON.parse(actionInfo[1]);
+    info.clientId = params.c;
+    info.visitId = params.v;
+    info.time = utils.epoch();
+    info.action = actionInfo[0];
+    db.collection("actions").insert(info, function(){});
   }
 };
 
 module.exports = {
   init: _init,
+  onlineUsers: onlineUsers
 };
